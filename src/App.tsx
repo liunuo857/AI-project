@@ -5,6 +5,7 @@ import enUS from 'antd/locale/en_US';
 import jaJP from 'antd/locale/ja_JP';
 import Login from './pages/Login';
 import Forbidden from './pages/Forbidden';
+import NotFound from './pages/NotFound';
 import AdminLayout from './layouts/AdminLayout';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
@@ -101,6 +102,7 @@ function App() {
               </ProtectedRoute>
             } 
           />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </Router>
     </ConfigProvider>

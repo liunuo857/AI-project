@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Input, Tag, Modal, message, Card, Typography } from 'antd';
-import { SearchOutlined, EyeOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Input, Tag, Modal, message, Card, Typography, Dropdown, Select, DatePicker, Progress } from 'antd';
+import type { TableColumnsType, TableProps } from 'antd';
+import { SearchOutlined, EyeOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, DownOutlined, FilterOutlined } from '@ant-design/icons';
+import type { Key } from 'react';
+import dayjs, { Dayjs } from 'dayjs';
+import TableSkeleton from '../components/TableSkeleton';
 
 const { Title } = Typography;
+const { RangePicker } = DatePicker;
 
 const Orders: React.FC = () => {
   const [orders, setOrders] = useState<any[]>([]);
@@ -11,6 +16,16 @@ const Orders: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [sortField, setSortField] = useState<string>('');
+  const [sortOrder, setSortOrder] = useState<'ascend' | 'descend' | null>(null);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
+  const [showProgress, setShowProgress] = useState(false);
 
   // 模拟订单数据
   useEffect(() => {
@@ -31,53 +46,241 @@ const Orders: React.FC = () => {
     }, 500);
   }, []);
 
-  // 搜索功能
+  // 搜索和筛选功能
   useEffect(() => {
-    if (!searchText.trim()) {
-      setFilteredOrders(orders);
-      return;
+    let filtered = [...orders];
+
+    // 搜索过滤
+    if (searchText.trim()) {
+      const lowerSearchText = searchText.toLowerCase();
+      filtered = filtered.filter(order => 
+        order.id.toLowerCase().includes(lowerSearchText) ||
+        order.customer.toLowerCase().includes(lowerSearchText) ||
+        order.product.toLowerCase().includes(lowerSearchText) ||
+        order.status.toLowerCase().includes(lowerSearchText)
+      );
     }
 
-    const lowerSearchText = searchText.toLowerCase();
-    const filtered = orders.filter(order => 
-      order.id.toLowerCase().includes(lowerSearchText) ||
-      order.customer.toLowerCase().includes(lowerSearchText) ||
-      order.product.toLowerCase().includes(lowerSearchText) ||
-      order.status.toLowerCase().includes(lowerSearchText)
-    );
+    // 状态筛选
+    if (filterStatus !== 'all') {
+      filtered = filtered.filter(order => order.status === filterStatus);
+    }
+
+    // 日期范围筛选
+    if (dateRange && dateRange[0] && dateRange[1]) {
+      filtered = filtered.filter(order => {
+        const orderDate = dayjs(order.date, 'YYYY-MM-DD HH:mm');
+        return orderDate.isAfter(dateRange[0]) && orderDate.isBefore(dateRange[1]);
+      });
+    }
+
+    // 排序
+    if (sortField && sortOrder) {
+      filtered.sort((a, b) => {
+        let aValue = a[sortField];
+        let bValue = b[sortField];
+        
+        // 特殊处理金额字段
+        if (sortField === 'amount') {
+          aValue = parseFloat(aValue);
+          bValue = parseFloat(bValue);
+        }
+        
+        if (sortOrder === 'ascend') {
+          return aValue > bValue ? 1 : -1;
+        } else {
+          return aValue < bValue ? 1 : -1;
+        }
+      });
+    }
+
     setFilteredOrders(filtered);
-  }, [searchText, orders]);
+  }, [searchText, orders, filterStatus, dateRange, sortField, sortOrder]);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchText(e.target.value);
   };
 
-  const columns = [
+  // 批量删除
+  const handleBatchDelete = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要删除的订单');
+      return;
+    }
+
+    Modal.confirm({
+      title: '批量删除确认',
+      content: `您确定要删除选中的 ${selectedRowKeys.length} 个订单吗？`,
+      okText: '确认',
+      cancelText: '取消',
+      okButtonProps: { loading: deleteLoading },
+      onOk: async () => {
+        setDeleteLoading(true);
+        setShowProgress(true);
+        setBatchProgress(0);
+
+        const total = selectedRowKeys.length;
+        const deletePromises = selectedRowKeys.map((key, index) => {
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              setBatchProgress(Math.round(((index + 1) / total) * 100));
+              resolve(key);
+            }, 100);
+          });
+        });
+
+        await Promise.all(deletePromises);
+
+        const newOrders = orders.filter(order => !selectedRowKeys.includes(order.id));
+        setOrders(newOrders);
+        setSelectedRowKeys([]);
+        setDeleteLoading(false);
+        setShowProgress(false);
+        setBatchProgress(0);
+        message.success(`成功删除 ${total} 个订单`);
+      }
+    });
+  };
+
+  // 批量导出
+  const handleBatchExport = async (format: 'csv' | 'excel') => {
+    const exportData = selectedRowKeys.length > 0
+      ? orders.filter(order => selectedRowKeys.includes(order.id))
+      : filteredOrders;
+
+    if (exportData.length === 0) {
+      message.warning('没有可导出的数据');
+      return;
+    }
+
+    setExportLoading(true);
+    message.loading({ content: '正在导出数据...', key: 'export', duration: 0 });
+
+    // 模拟导出处理时间
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // 生成CSV内容
+    const headers = ['订单号', '客户', '商品', '金额', '状态', '日期'];
+    const csvContent = [
+      headers.join(','),
+      ...exportData.map(order => 
+        [order.id, order.customer, order.product, order.amount, order.status, order.date].join(',')
+      )
+    ].join('\n');
+
+    // 创建下载链接
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `orders_export_${Date.now()}.${format === 'csv' ? 'csv' : 'xlsx'}`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setExportLoading(false);
+    message.success({ content: `成功导出 ${exportData.length} 条数据`, key: 'export', duration: 2 });
+  };
+
+  // 批量修改状态
+  const handleBatchStatusChange = (newStatus: string) => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要修改的订单');
+      return;
+    }
+
+    Modal.confirm({
+      title: '批量修改状态',
+      content: `您确定要将选中的 ${selectedRowKeys.length} 个订单状态修改为"${newStatus}"吗？`,
+      okText: '确认',
+      cancelText: '取消',
+      okButtonProps: { loading: batchLoading },
+      onOk: async () => {
+        setBatchLoading(true);
+        setShowProgress(true);
+        setBatchProgress(0);
+
+        const total = selectedRowKeys.length;
+        const updatePromises = selectedRowKeys.map((key, index) => {
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              setBatchProgress(Math.round(((index + 1) / total) * 100));
+              resolve(key);
+            }, 100);
+          });
+        });
+
+        await Promise.all(updatePromises);
+
+        const newOrders = orders.map(order => 
+          selectedRowKeys.includes(order.id) ? { ...order, status: newStatus } : order
+        );
+        setOrders(newOrders);
+        setSelectedRowKeys([]);
+        setBatchLoading(false);
+        setShowProgress(false);
+        setBatchProgress(0);
+        message.success(`成功修改 ${total} 个订单的状态`);
+      }
+    });
+  };
+
+  // 表格排序变化处理
+  const handleTableChange: TableProps<any>['onChange'] = (pagination, filters, sorter: any) => {
+    if (sorter.field) {
+      setSortField(sorter.field);
+      setSortOrder(sorter.order || null);
+    } else {
+      setSortField('');
+      setSortOrder(null);
+    }
+  };
+
+  // 行选择配置
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (selectedKeys: Key[]) => {
+      setSelectedRowKeys(selectedKeys);
+    },
+  };
+
+  const columns: TableColumnsType<any> = [
     {
       title: '订单号',
       dataIndex: 'id',
       key: 'id',
+      sorter: true,
+      sortOrder: sortField === 'id' ? sortOrder : null,
     },
     {
       title: '客户',
       dataIndex: 'customer',
       key: 'customer',
+      sorter: true,
+      sortOrder: sortField === 'customer' ? sortOrder : null,
     },
     {
       title: '商品',
       dataIndex: 'product',
       key: 'product',
+      sorter: true,
+      sortOrder: sortField === 'product' ? sortOrder : null,
     },
     {
       title: '金额',
       dataIndex: 'amount',
       key: 'amount',
+      sorter: true,
+      sortOrder: sortField === 'amount' ? sortOrder : null,
       render: (amount: number) => `¥${amount.toFixed(2)}`,
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
+      sorter: true,
+      sortOrder: sortField === 'status' ? sortOrder : null,
       render: (status: string) => {
         let color = 'default';
         if (status === '已完成') color = 'green';
@@ -93,6 +296,8 @@ const Orders: React.FC = () => {
       title: '日期',
       dataIndex: 'date',
       key: 'date',
+      sorter: true,
+      sortOrder: sortField === 'date' ? sortOrder : null,
     },
     {
       title: '操作',
@@ -157,8 +362,51 @@ const Orders: React.FC = () => {
     setIsModalVisible(false);
   };
 
+  // 初始加载时显示骨架屏
+  if (loading && orders.length === 0) {
+    return (
+      <div style={{ padding: '24px', backgroundColor: '#f5f5f5', minHeight: '100vh' }}>
+        <Card 
+          style={{ 
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+            borderRadius: '8px',
+            marginBottom: 24
+          }}
+        >
+          <div style={{ marginBottom: 16 }}>
+            <Title level={2} style={{ fontWeight: 'bold', marginBottom: 0 }}>订单管理</Title>
+          </div>
+        </Card>
+        <TableSkeleton rows={8} />
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '24px', backgroundColor: '#f5f5f5', minHeight: '100vh' }}>
+      {/* 批量操作进度条 */}
+      {showProgress && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 10000,
+            backgroundColor: 'white',
+            padding: '32px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            minWidth: '400px',
+          }}
+        >
+          <div style={{ marginBottom: 16, fontSize: '16px', fontWeight: 'bold' }}>
+            正在处理...
+          </div>
+          <Progress percent={batchProgress} status="active" />
+        </div>
+      )}
+
       <Card 
         style={{ 
           boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
@@ -166,21 +414,116 @@ const Orders: React.FC = () => {
           marginBottom: 24
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <Title level={2} style={{ fontWeight: 'bold', marginBottom: 0 }}>订单管理</Title>
-          <Space>
-            <Input 
-              placeholder="搜索订单（订单号/客户/商品/状态）..." 
-              prefix={<SearchOutlined />} 
-              style={{ width: 300 }}
-              value={searchText}
-              onChange={handleSearch}
-              allowClear
-            />
-            <Button type="primary">
-              导出订单
-            </Button>
-          </Space>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <Title level={2} style={{ fontWeight: 'bold', marginBottom: 0 }}>订单管理</Title>
+            <Space>
+              <Input 
+                placeholder="搜索订单（订单号/客户/商品/状态）..." 
+                prefix={<SearchOutlined />} 
+                style={{ width: 300 }}
+                value={searchText}
+                onChange={handleSearch}
+                allowClear
+              />
+            </Space>
+          </div>
+
+          {/* 筛选和批量操作区域 */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Space size="middle">
+              <Space>
+                <FilterOutlined />
+                <span>筛选：</span>
+              </Space>
+              <Select
+                style={{ width: 120 }}
+                placeholder="状态"
+                value={filterStatus}
+                onChange={setFilterStatus}
+              >
+                <Select.Option value="all">全部状态</Select.Option>
+                <Select.Option value="待付款">待付款</Select.Option>
+                <Select.Option value="待发货">待发货</Select.Option>
+                <Select.Option value="配送中">配送中</Select.Option>
+                <Select.Option value="已完成">已完成</Select.Option>
+                <Select.Option value="已取消">已取消</Select.Option>
+              </Select>
+              <RangePicker
+                style={{ width: 280 }}
+                placeholder={['开始日期', '结束日期']}
+                value={dateRange}
+                onChange={(dates) => setDateRange(dates as [Dayjs | null, Dayjs | null] | null)}
+              />
+            </Space>
+
+            <Space>
+              {selectedRowKeys.length > 0 && (
+                <span style={{ marginRight: 8 }}>
+                  已选择 <strong>{selectedRowKeys.length}</strong> 项
+                </span>
+              )}
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: 'csv',
+                      label: '导出为 CSV',
+                      onClick: () => handleBatchExport('csv'),
+                    },
+                    {
+                      key: 'excel',
+                      label: '导出为 Excel',
+                      onClick: () => handleBatchExport('excel'),
+                    },
+                  ],
+                }}
+              >
+                <Button icon={<DownloadOutlined />} loading={exportLoading}>
+                  导出 <DownOutlined />
+                </Button>
+              </Dropdown>
+              <Dropdown
+                disabled={selectedRowKeys.length === 0}
+                menu={{
+                  items: [
+                    {
+                      key: 'pending',
+                      label: '标记为待发货',
+                      onClick: () => handleBatchStatusChange('待发货'),
+                    },
+                    {
+                      key: 'shipping',
+                      label: '标记为配送中',
+                      onClick: () => handleBatchStatusChange('配送中'),
+                    },
+                    {
+                      key: 'completed',
+                      label: '标记为已完成',
+                      onClick: () => handleBatchStatusChange('已完成'),
+                    },
+                    {
+                      key: 'cancelled',
+                      label: '标记为已取消',
+                      onClick: () => handleBatchStatusChange('已取消'),
+                    },
+                  ],
+                }}
+              >
+                <Button disabled={selectedRowKeys.length === 0}>
+                  批量操作 <DownOutlined />
+                </Button>
+              </Dropdown>
+              <Button 
+                danger 
+                disabled={selectedRowKeys.length === 0}
+                loading={deleteLoading}
+                onClick={handleBatchDelete}
+              >
+                批量删除
+              </Button>
+            </Space>
+          </div>
         </div>
       </Card>
 
@@ -195,6 +538,8 @@ const Orders: React.FC = () => {
           dataSource={filteredOrders} 
           rowKey="id" 
           loading={loading}
+          rowSelection={rowSelection}
+          onChange={handleTableChange}
           pagination={{
             pageSize: 10,
             showSizeChanger: true,
