@@ -22,6 +22,7 @@ import { hasAnyPermission } from '../utils/permission';
 import { getMenuRoutes } from '../config/routes';
 import Breadcrumb from '../components/Breadcrumb';
 import { useTranslation } from '../hooks/useTranslation';
+import HelpCenter from '../components/HelpCenter';
 
 const { Header, Sider, Content } = Layout;
 const { Title } = Typography;
@@ -44,11 +45,29 @@ const MENU_ICONS: Record<string, React.ReactNode> = {
 const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [searchValue, setSearchValue] = useState('');
-  const { userInfo } = useAppSelector((state) => state.user);
+  const [helpVisible, setHelpVisible] = useState(false);
+  const { userInfo, settings } = useAppSelector((state) => state.user);
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
+
+  // 判断是否为暗黑主题
+  const isDark = settings.theme === 'dark';
+
+  // 动态颜色配置
+  const colors = {
+    siderBg: isDark ? '#1f1f1f' : '#fff',
+    headerBg: isDark ? '#1f1f1f' : '#fff',
+    contentBg: isDark ? '#0a0a0a' : '#f5f5f5',
+    cardBg: isDark ? '#1f1f1f' : '#fff',
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#f0f0f0',
+    textPrimary: isDark ? 'rgba(255, 255, 255, 0.88)' : '#262626',
+    textSecondary: isDark ? 'rgba(255, 255, 255, 0.65)' : '#595959',
+    hoverBg: isDark ? 'rgba(255, 255, 255, 0.08)' : '#f5f5f5',
+    searchBg: isDark ? '#262626' : '#f5f5f5',
+    searchFocusBg: isDark ? '#1f1f1f' : '#fff',
+  };
 
   // 模拟通知数据
   const notifications = [
@@ -190,15 +209,21 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const openKeys = menuItems.some(item => selectedKey.startsWith(item.key)) ? [selectedKey.split('/')[1]] : [];
 
   return (
-    <Layout style={{ minHeight: '100vh', background: '#f5f5f5' }}>
+    <Layout style={{ minHeight: '100vh', background: colors.contentBg }}>
       <Sider 
         trigger={null} 
         collapsible 
         collapsed={collapsed}
         style={{ 
-          background: '#fff',
-          boxShadow: '2px 0 8px 0 rgba(29,35,41,.05)',
-          borderRight: '1px solid #f0f0f0',
+          background: colors.siderBg,
+          boxShadow: isDark ? '2px 0 8px 0 rgba(0,0,0,.3)' : '2px 0 8px 0 rgba(29,35,41,.05)',
+          borderRight: `1px solid ${colors.borderColor}`,
+          overflow: 'auto',
+          height: '100vh',
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          bottom: 0,
         }}
       >
         <div 
@@ -209,7 +234,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: collapsed ? 'center' : 'flex-start',
-            borderBottom: '1px solid #f0f0f0',
+            borderBottom: `1px solid ${colors.borderColor}`,
             transition: 'all 0.2s',
           }}
         >
@@ -252,18 +277,19 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </div>
         </div>
         <Menu
-          theme="light"
+          theme={isDark ? 'dark' : 'light'}
           mode="inline"
           selectedKeys={[selectedKey]}
           defaultOpenKeys={openKeys}
           style={{
             borderRight: 0,
             marginTop: '8px',
+            background: colors.siderBg,
           }}
           items={menuItems.map(item => ({
             key: item.key,
             icon: item.icon,
-            label: <Link to={item.key} style={{ fontWeight: 500 }}>{item.label}</Link>,
+            label: <Link to={item.key} style={{ fontWeight: 500, color: colors.textPrimary }}>{item.label}</Link>,
             style: {
               margin: '4px 8px',
               borderRadius: '8px',
@@ -273,14 +299,20 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           }))}
         />
       </Sider>
-      <Layout className="site-layout">
+      <Layout className="site-layout" style={{ marginLeft: collapsed ? 80 : 200, transition: 'margin-left 0.2s' }}>
         <Header style={{ 
           padding: 0, 
-          background: '#fff', 
+          background: colors.headerBg, 
           display: 'flex', 
           alignItems: 'center', 
-          boxShadow: '0 1px 4px rgba(0,21,41,.08)',
-          borderBottom: '1px solid #f0f0f0',
+          boxShadow: isDark ? '0 1px 4px rgba(0,0,0,.3)' : '0 1px 4px rgba(0,21,41,.08)',
+          borderBottom: `1px solid ${colors.borderColor}`,
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          left: collapsed ? 80 : 200,
+          zIndex: 1,
+          transition: 'left 0.2s',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', padding: '0 24px' }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -296,12 +328,12 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   color: '#595959',
                 },
                 onMouseEnter: (e: any) => {
-                  e.currentTarget.style.background = '#f5f5f5';
+                  e.currentTarget.style.background = colors.hoverBg;
                   e.currentTarget.style.color = '#1890ff';
                 },
                 onMouseLeave: (e: any) => {
                   e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = '#595959';
+                  e.currentTarget.style.color = colors.textSecondary;
                 },
               })}
             </div>
@@ -315,15 +347,16 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 style={{
                   width: 240,
                   borderRadius: '20px',
-                  background: '#f5f5f5',
+                  background: colors.searchBg,
                   border: 'none',
+                  color: colors.textPrimary,
                 }}
                 onFocus={(e: any) => {
-                  e.currentTarget.style.background = '#fff';
+                  e.currentTarget.style.background = colors.searchFocusBg;
                   e.currentTarget.style.boxShadow = '0 0 0 2px rgba(24, 144, 255, 0.2)';
                 }}
                 onBlur={(e: any) => {
-                  e.currentTarget.style.background = '#f5f5f5';
+                  e.currentTarget.style.background = colors.searchBg;
                   e.currentTarget.style.boxShadow = 'none';
                 }}
               />
@@ -331,6 +364,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <Space size="large">
                 {/* 帮助中心 */}
                 <QuestionCircleOutlined 
+                  onClick={() => setHelpVisible(true)}
                   style={{ 
                     fontSize: '18px', 
                     color: '#595959',
@@ -402,7 +436,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                       transition: 'all 0.3s',
                     }}
                     onMouseEnter={(e: any) => {
-                      e.currentTarget.style.background = '#f5f5f5';
+                      e.currentTarget.style.background = colors.hoverBg;
                     }}
                     onMouseLeave={(e: any) => {
                       e.currentTarget.style.background = 'transparent';
@@ -416,7 +450,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                         background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
                       }}
                     />
-                    <span style={{ fontWeight: 500, color: '#262626' }}>{userInfo?.username}</span>
+                    <span style={{ fontWeight: 500, color: colors.textPrimary }}>{userInfo?.username}</span>
                   </Space>
                 </Dropdown>
               </Space>
@@ -425,18 +459,23 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </Header>
         <Content
           style={{
-            margin: '24px',
+            margin: '88px 24px 24px',
             padding: 24,
-            background: '#fff',
+            background: colors.cardBg,
             minHeight: 280,
             borderRadius: '12px',
-            boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 1px 6px -1px rgba(0,0,0,0.02), 0 2px 4px rgba(0,0,0,0.02)',
+            boxShadow: isDark 
+              ? '0 1px 2px rgba(0,0,0,0.3), 0 1px 6px -1px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.2)'
+              : '0 1px 2px rgba(0,0,0,0.03), 0 1px 6px -1px rgba(0,0,0,0.02), 0 2px 4px rgba(0,0,0,0.02)',
           }}
         >
           <Breadcrumb />
           {children}
         </Content>
       </Layout>
+
+      {/* 帮助中心弹窗 */}
+      <HelpCenter visible={helpVisible} onClose={() => setHelpVisible(false)} />
     </Layout>
   );
 };

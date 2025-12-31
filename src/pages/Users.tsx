@@ -4,11 +4,14 @@ import type { TableColumnsType, TableProps } from 'antd';
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, DownOutlined, FilterOutlined } from '@ant-design/icons';
 import type { Key } from 'react';
 import TableSkeleton from '../components/TableSkeleton';
+import { useAppDispatch, useAppSelector } from '../hooks/redux';
+import { addUser, updateUser, deleteUser, batchDeleteUsers, batchUpdateUserStatus } from '../store/slices/usersSlice';
 
 const { Title } = Typography;
 
 const Users: React.FC = () => {
-  const [users, setUsers] = useState<any[]>([]);
+  const dispatch = useAppDispatch();
+  const { users } = useAppSelector((state) => state.users);
   const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
   const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,23 +29,10 @@ const Users: React.FC = () => {
   const [batchProgress, setBatchProgress] = useState(0);
   const [showProgress, setShowProgress] = useState(false);
 
-  // 模拟用户数据
+  // 初始化过滤后的用户列表
   useEffect(() => {
-    setLoading(true);
-    // 模拟 API 调用
-    setTimeout(() => {
-      const mockUsers = [
-        { id: 1, name: '张三', email: 'zhangsan@example.com', role: '管理员', status: '激活' },
-        { id: 2, name: '李四', email: 'lisi@example.com', role: '用户', status: '激活' },
-        { id: 3, name: '王五', email: 'wangwu@example.com', role: '用户', status: '禁用' },
-        { id: 4, name: '赵六', email: 'zhaoliu@example.com', role: '编辑', status: '激活' },
-        { id: 5, name: '孙七', email: 'sunqi@example.com', role: '用户', status: '激活' },
-      ];
-      setUsers(mockUsers);
-      setFilteredUsers(mockUsers);
-      setLoading(false);
-    }, 500);
-  }, []);
+    setFilteredUsers(users);
+  }, [users]);
 
   // 搜索和筛选功能
   useEffect(() => {
@@ -120,8 +110,7 @@ const Users: React.FC = () => {
 
         await Promise.all(deletePromises);
 
-        const newUsers = users.filter(user => !selectedRowKeys.includes(user.id));
-        setUsers(newUsers);
+        dispatch(batchDeleteUsers(selectedRowKeys as number[]));
         setSelectedRowKeys([]);
         setDeleteLoading(false);
         setShowProgress(false);
@@ -202,10 +191,7 @@ const Users: React.FC = () => {
 
         await Promise.all(updatePromises);
 
-        const newUsers = users.map(user => 
-          selectedRowKeys.includes(user.id) ? { ...user, status: newStatus } : user
-        );
-        setUsers(newUsers);
+        dispatch(batchUpdateUserStatus({ ids: selectedRowKeys as number[], status: newStatus }));
         setSelectedRowKeys([]);
         setBatchLoading(false);
         setShowProgress(false);
@@ -313,8 +299,7 @@ const Users: React.FC = () => {
       okText: '确认',
       cancelText: '取消',
       onOk: () => {
-        const newUsers = users.filter(user => user.id !== id);
-        setUsers(newUsers);
+        dispatch(deleteUser(id));
         message.success('用户删除成功');
       }
     });
@@ -330,17 +315,11 @@ const Users: React.FC = () => {
     form.validateFields().then(values => {
       if (editingUser) {
         // 更新用户
-        setUsers(users.map(user => 
-          user.id === editingUser.id ? { ...user, ...values } : user
-        ));
+        dispatch(updateUser({ ...editingUser, ...values }));
         message.success('用户信息更新成功');
       } else {
         // 添加新用户
-        const newUser = {
-          id: users.length + 1,
-          ...values,
-        };
-        setUsers([...users, newUser]);
+        dispatch(addUser(values));
         message.success('用户添加成功');
       }
       setIsModalVisible(false);

@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Input, Tag, Modal, message, Card, Typography, Dropdown, Select, DatePicker, Progress } from 'antd';
+import { Table, Button, Space, Input, Tag, Modal, message, Card, Typography, Dropdown, Select, DatePicker, Progress, Form, InputNumber } from 'antd';
 import type { TableColumnsType, TableProps } from 'antd';
-import { SearchOutlined, EyeOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, DownOutlined, FilterOutlined } from '@ant-design/icons';
+import { SearchOutlined, EyeOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, DownOutlined, FilterOutlined, PlusOutlined } from '@ant-design/icons';
 import type { Key } from 'react';
 import dayjs, { Dayjs } from 'dayjs';
 import TableSkeleton from '../components/TableSkeleton';
+import { useAppDispatch, useAppSelector } from '../hooks/redux';
+import { addOrder, deleteOrder, batchDeleteOrders, batchUpdateOrderStatus } from '../store/slices/ordersSlice';
 
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
 const Orders: React.FC = () => {
-  const [orders, setOrders] = useState<any[]>([]);
+  const dispatch = useAppDispatch();
+  const { orders } = useAppSelector((state) => state.orders);
   const [filteredOrders, setFilteredOrders] = useState<any[]>([]);
   const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,25 +29,14 @@ const Orders: React.FC = () => {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [batchProgress, setBatchProgress] = useState(0);
   const [showProgress, setShowProgress] = useState(false);
+  const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [addForm] = Form.useForm();
+  const [addLoading, setAddLoading] = useState(false);
 
-  // 模拟订单数据
+  // 初始化过滤后的订单列表
   useEffect(() => {
-    setLoading(true);
-    // 模拟 API 调用
-    setTimeout(() => {
-      const mockOrders = [
-        { id: 'ORD001', customer: '张三', product: '产品A', amount: 299.00, status: '已完成', date: '2023-05-15 14:30' },
-        { id: 'ORD002', customer: '李四', product: '产品B', amount: 199.50, status: '待发货', date: '2023-05-16 09:15' },
-        { id: 'ORD003', customer: '王五', product: '产品C', amount: 599.00, status: '配送中', date: '2023-05-16 11:20' },
-        { id: 'ORD004', customer: '赵六', product: '产品D', amount: 89.90, status: '已取消', date: '2023-05-15 16:45' },
-        { id: 'ORD005', customer: '孙七', product: '产品E', amount: 1299.00, status: '已完成', date: '2023-05-17 10:30' },
-        { id: 'ORD006', customer: '周八', product: '产品F', amount: 45.00, status: '待付款', date: '2023-05-17 13:20' },
-      ];
-      setOrders(mockOrders);
-      setFilteredOrders(mockOrders);
-      setLoading(false);
-    }, 500);
-  }, []);
+    setFilteredOrders(orders);
+  }, [orders]);
 
   // 搜索和筛选功能
   useEffect(() => {
@@ -131,8 +123,7 @@ const Orders: React.FC = () => {
 
         await Promise.all(deletePromises);
 
-        const newOrders = orders.filter(order => !selectedRowKeys.includes(order.id));
-        setOrders(newOrders);
+        dispatch(batchDeleteOrders(selectedRowKeys as string[]));
         setSelectedRowKeys([]);
         setDeleteLoading(false);
         setShowProgress(false);
@@ -213,10 +204,7 @@ const Orders: React.FC = () => {
 
         await Promise.all(updatePromises);
 
-        const newOrders = orders.map(order => 
-          selectedRowKeys.includes(order.id) ? { ...order, status: newStatus } : order
-        );
-        setOrders(newOrders);
+        dispatch(batchUpdateOrderStatus({ ids: selectedRowKeys as string[], status: newStatus }));
         setSelectedRowKeys([]);
         setBatchLoading(false);
         setShowProgress(false);
@@ -347,8 +335,7 @@ const Orders: React.FC = () => {
       okText: '确认',
       cancelText: '取消',
       onOk: () => {
-        const newOrders = orders.filter(order => order.id !== id);
-        setOrders(newOrders);
+        dispatch(deleteOrder(id));
         message.success('订单删除成功');
       }
     });
@@ -360,6 +347,42 @@ const Orders: React.FC = () => {
 
   const handleCancel = () => {
     setIsModalVisible(false);
+  };
+
+  // 新增订单
+  const handleAddOrder = () => {
+    setIsAddModalVisible(true);
+    addForm.resetFields();
+  };
+
+  const handleAddSubmit = async () => {
+    try {
+      const values = await addForm.validateFields();
+      setAddLoading(true);
+
+      // 模拟 API 调用
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 使用 Redux 添加订单
+      dispatch(addOrder({
+        customer: values.customer,
+        product: values.product,
+        amount: values.amount,
+      }));
+      
+      setAddLoading(false);
+      setIsAddModalVisible(false);
+      addForm.resetFields();
+      message.success('订单创建成功！');
+    } catch (error) {
+      console.error('表单验证失败:', error);
+      setAddLoading(false);
+    }
+  };
+
+  const handleAddCancel = () => {
+    setIsAddModalVisible(false);
+    addForm.resetFields();
   };
 
   // 初始加载时显示骨架屏
@@ -426,6 +449,13 @@ const Orders: React.FC = () => {
                 onChange={handleSearch}
                 allowClear
               />
+              <Button 
+                type="primary" 
+                icon={<PlusOutlined />}
+                onClick={handleAddOrder}
+              >
+                新增订单
+              </Button>
             </Space>
           </div>
 
@@ -577,6 +607,79 @@ const Orders: React.FC = () => {
             <p><strong>下单时间：</strong>{selectedOrder.date}</p>
           </div>
         )}
+      </Modal>
+
+      {/* 新增订单 Modal */}
+      <Modal
+        title="新增订单"
+        open={isAddModalVisible}
+        onOk={handleAddSubmit}
+        onCancel={handleAddCancel}
+        okText="创建"
+        cancelText="取消"
+        confirmLoading={addLoading}
+        width={600}
+      >
+        <Form
+          form={addForm}
+          layout="vertical"
+          autoComplete="off"
+        >
+          <Form.Item
+            label="客户姓名"
+            name="customer"
+            rules={[
+              { required: true, message: '请输入客户姓名' },
+              { min: 2, message: '客户姓名至少2个字符' },
+              { max: 20, message: '客户姓名最多20个字符' },
+            ]}
+          >
+            <Input placeholder="请输入客户姓名" />
+          </Form.Item>
+
+          <Form.Item
+            label="商品名称"
+            name="product"
+            rules={[
+              { required: true, message: '请输入商品名称' },
+              { min: 2, message: '商品名称至少2个字符' },
+              { max: 50, message: '商品名称最多50个字符' },
+            ]}
+          >
+            <Input placeholder="请输入商品名称" />
+          </Form.Item>
+
+          <Form.Item
+            label="订单金额"
+            name="amount"
+            rules={[
+              { required: true, message: '请输入订单金额' },
+              { type: 'number', min: 0.01, message: '金额必须大于0' },
+              { type: 'number', max: 999999.99, message: '金额不能超过999999.99' },
+            ]}
+          >
+            <InputNumber
+              style={{ width: '100%' }}
+              placeholder="请输入订单金额"
+              prefix="¥"
+              precision={2}
+              min={0.01}
+              max={999999.99}
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="备注"
+            name="remark"
+          >
+            <Input.TextArea
+              placeholder="请输入备注信息（可选）"
+              rows={4}
+              maxLength={200}
+              showCount
+            />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

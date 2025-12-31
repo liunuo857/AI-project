@@ -172,7 +172,7 @@ export const mockAuthApi = {
         username: 'admin',
         email: 'admin@example.com',
         avatar: 'https://gw.alipayobjects.com/zos/antfincdn/aPkFc8Sj7n/method-draw-image.svg',
-        role: '管理员',
+        role: 'admin',
       },
     };
   },
